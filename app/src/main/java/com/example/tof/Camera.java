@@ -55,13 +55,14 @@ public class Camera extends CameraDevice.StateCallback {
             for (String camera : cameraManager.getCameraIdList()) {
                 CameraCharacteristics chars = cameraManager.getCameraCharacteristics(camera);
                 final int[] capabilities = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
-                boolean facingFront = chars.get(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_FRONT;
+//                boolean facingFront = chars.get(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_FRONT;
+                boolean facingBack = chars.get(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_BACK;
                 boolean depthCapable = false;
                 for (int capability : capabilities) {
                     boolean capable = capability == CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT;
                     depthCapable = depthCapable || capable;
                 }
-                if (depthCapable && facingFront) {
+                if (depthCapable && facingBack) {
                     // Note that the sensor size is much larger than the available capture size
                     SizeF sensorSize = chars.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
                     Log.i(TAG, "Sensor size: " + sensorSize);

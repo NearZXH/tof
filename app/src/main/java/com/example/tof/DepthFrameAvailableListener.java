@@ -15,16 +15,16 @@ public class DepthFrameAvailableListener implements ImageReader.OnImageAvailable
     public static int WIDTH = 240;
     public static int HEIGHT = 180;
 
-    private static float RANGE_MIN = 200.0f;
-    private static float RANGE_MAX = 1600.0f;
-    private static float CONFIDENCE_FILTER = 0.1f;
+    private static float RANGE_MIN = 100.0f;
+    private static float RANGE_MAX = 200.0f;
+    private static float CONFIDENCE_FILTER = 0.99f;
 
     private DepthFrameVisualizer depthFrameVisualizer;
     private int[] rawMask;
     private int[] noiseReduceMask;
     private int[] averagedMask;
-    private int[] averagedMaskP2;
     private int[] blurredAverage;
+    private int averageDistance;
 
     public DepthFrameAvailableListener(DepthFrameVisualizer depthFrameVisualizer) {
         this.depthFrameVisualizer = depthFrameVisualizer;
@@ -33,7 +33,6 @@ public class DepthFrameAvailableListener implements ImageReader.OnImageAvailable
         rawMask = new int[size];
         noiseReduceMask = new int[size];
         averagedMask = new int[size];
-        averagedMaskP2 = new int[size];
         blurredAverage = new int[size];
     }
 
@@ -44,9 +43,9 @@ public class DepthFrameAvailableListener implements ImageReader.OnImageAvailable
             if (image != null && image.getFormat() == ImageFormat.DEPTH16) {
                 processImage(image);
                 publishRawData();
-                publishNoiseReduction();
-                publishMovingAverage();
-                publishBlurredMovingAverage();
+//                publishNoiseReduction();
+//                publishMovingAverage();
+//                publishBlurredMovingAverage();
             }
             image.close();
         }
@@ -58,7 +57,8 @@ public class DepthFrameAvailableListener implements ImageReader.OnImageAvailable
     private void publishRawData() {
         if (depthFrameVisualizer != null) {
             Bitmap bitmap = convertToRGBBitmap(rawMask);
-            depthFrameVisualizer.onRawDataAvailable(bitmap);
+            Log.e(TAG, "Distance: " + averageDistance);
+            depthFrameVisualizer.onRawDataAvailable(bitmap, averageDistance);
             bitmap.recycle();
         }
     }
@@ -90,36 +90,75 @@ public class DepthFrameAvailableListener implements ImageReader.OnImageAvailable
     private void processImage(Image image) {
         ShortBuffer shortDepthBuffer = image.getPlanes()[0].getBuffer().asShortBuffer();
         int[] mask = new int[WIDTH * HEIGHT];
+        int[] depthList = new int[WIDTH * HEIGHT];
+        int len = rawMask.length;
+        int middlePoint = (int)(rawMask.length / 2 - 1);
+        Log.i(TAG, "" + middlePoint);
         int[] noiseReducedMask = new int[WIDTH * HEIGHT];
         for (int y = 0; y < HEIGHT; y++) {
             for (int x = 0; x < WIDTH; x++) {
                 int index = y * WIDTH + x;
                 short depthSample = shortDepthBuffer.get(index);
                 int newValue = extractRange(depthSample, CONFIDENCE_FILTER);
+                int normalizedValue = normalizeRange(newValue);
                 // Store value in the rawMask for visualization
-                rawMask[index] = newValue;
+                // 因为用的是后置摄像头，图像是旋转 180 度的，所以倒序赋值数组进行旋转
+                depthList[len - index - 1] = newValue;
+                rawMask[len - index - 1] = normalizedValue;
+//                if (index == middlePoint) {
+//                    midDistance = newValue;
+//                }
 
-                int p1Value = averagedMask[index];
-                int p2Value = averagedMaskP2[index];
-                int avgValue = (newValue + p1Value + p2Value) / 3;
-                if (p1Value < 0 || p2Value < 0 || newValue < 0) {
-                    Log.d("TAG", "WHAT");
-                }
-                // Store the new moving average temporarily
-                mask[index] = avgValue;
+//                int p1Value = averagedMask[index];
+//                int p2Value = averagedMaskP2[index];
+//                int avgValue = (newValue + p1Value + p2Value) / 3;
+//                if (p1Value < 0 || p2Value < 0 || newValue < 0) {
+//                    Log.d("TAG", "WHAT");
+//                }
+//                // Store the new moving average temporarily
+//                mask[index] = avgValue;
             }
         }
-        // Produce a noise reduced version of the raw mask for visualization
-        System.arraycopy(rawMask, 0, noiseReducedMask, 0, rawMask.length);
-        noiseReduceMask = FastBlur.boxBlur(noiseReducedMask, WIDTH, HEIGHT, 1);
 
-        // Remember the last two frames for moving average
-        averagedMaskP2 = averagedMask;
-        averagedMask = mask;
+        // 只取中心的 2 * centerPercent 作为计算深度的依据
+        float centerPercent = 0.05f;  // 0 ~ 0.5
+        int yStart = (int)((0.5f - centerPercent) * HEIGHT);
+        int yEnd = (int)((0.5f + centerPercent) * HEIGHT);
+        int xStart = (int)((0.5f - centerPercent) * WIDTH);
+        int xEnd = (int)((0.5f + centerPercent) * WIDTH);
 
-        // Produce a blurred version of the latest moving average result
-        System.arraycopy(averagedMask, 0, blurredAverage, 0, averagedMask.length);
-        blurredAverage = FastBlur.boxBlur(blurredAverage, WIDTH, HEIGHT, 1);
+        int sum = 0;
+        int counter = 0;
+        for (int y = yStart; y < yEnd; y++) {
+            for (int x = xStart; x < xEnd; x++) {
+                int index = y * WIDTH + x;
+                int depth = depthList[index];
+                if ( depth > 0) {
+                    sum += depth;
+                    counter += 1;
+                }
+            }
+        }
+        if (counter == 0) {
+            middlePoint = 0;
+        } else {
+            averageDistance = sum / counter;
+        }
+
+        Log.i(TAG, "" + middlePoint);
+
+
+//        // Produce a noise reduced version of the raw mask for visualization
+//        System.arraycopy(rawMask, 0, noiseReducedMask, 0, rawMask.length);
+//        noiseReduceMask = FastBlur.boxBlur(noiseReducedMask, WIDTH, HEIGHT, 1);
+//
+//        // Remember the last two frames for moving average
+//        averagedMaskP2 = averagedMask;
+//        averagedMask = mask;
+//
+//        // Produce a blurred version of the latest moving average result
+//        System.arraycopy(averagedMask, 0, blurredAverage, 0, averagedMask.length);
+//        blurredAverage = FastBlur.boxBlur(blurredAverage, WIDTH, HEIGHT, 1);
     }
 
     private int extractRange(short sample, float confidenceFilter) {
@@ -127,7 +166,7 @@ public class DepthFrameAvailableListener implements ImageReader.OnImageAvailable
         int depthConfidence = (short) ((sample >> 13) & 0x7);
         float depthPercentage = depthConfidence == 0 ? 1.f : (depthConfidence - 1) / 7.f;
         if (depthPercentage > confidenceFilter) {
-            return normalizeRange(depthRange);
+            return depthRange;
         } else {
             return 0;
         }
@@ -154,4 +193,5 @@ public class DepthFrameAvailableListener implements ImageReader.OnImageAvailable
         }
         return bitmap;
     }
+
 }

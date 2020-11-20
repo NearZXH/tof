@@ -8,6 +8,7 @@ import android.graphics.Matrix;
 import android.graphics.RectF;
 import android.os.Bundle;
 import android.view.TextureView;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -28,6 +29,7 @@ public class MainActivity extends AppCompatActivity implements DepthFrameVisuali
     private TextureView noiseReductionView;
     private TextureView movingAverageView;
     private TextureView blurredAverageView;
+    private TextView rawDataText;
     private Matrix defaultBitmapTransform;
     private Camera camera;
 
@@ -39,6 +41,8 @@ public class MainActivity extends AppCompatActivity implements DepthFrameVisuali
         noiseReductionView = findViewById(R.id.noiseReduction);
         movingAverageView = findViewById(R.id.movingAverage);
         blurredAverageView = findViewById(R.id.blurredAverage);
+        rawDataText = findViewById(R.id.textView3);
+
 
         checkCamPermissions();
         camera = new Camera(this, this);
@@ -57,8 +61,9 @@ public class MainActivity extends AppCompatActivity implements DepthFrameVisuali
     }
 
     @Override
-    public void onRawDataAvailable(Bitmap bitmap) {
+    public void onRawDataAvailable(Bitmap bitmap, int distance) {
         renderBitmapToTextureView(bitmap, rawDataView);
+        rawDataText.setText("" + distance);
     }
 
     @Override
